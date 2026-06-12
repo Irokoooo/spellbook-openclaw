@@ -31,6 +31,11 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Allow API routes to handle their own auth
+  if (pathname.startsWith('/api')) {
+    return supabaseResponse
+  }
+
   // Redirect unauthenticated users to login
   if (!user && !pathname.startsWith('/login') && !pathname.startsWith('/register')) {
     const url = request.nextUrl.clone()
