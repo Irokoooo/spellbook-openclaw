@@ -119,3 +119,14 @@
 - **环境变量**：已配置 NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY、NEXT_PUBLIC_APP_URL
 - **构建状态**：✅ 14 个页面全部编译成功
 - **注意**：vercel.json 从根目录移到 apps/web，移除了无效的 rootDirectory 字段
+
+---
+
+## 2026-06-12 Claude 主题系统 & 重新部署
+
+- **动作**：合并 Claude 开发的三主题系统，提交推送并重新部署到 Vercel
+- **提交**：8b3bcc6 - add @playwright/test dev dependency
+- **三主题**：默认（锌色+紫罗兰）、典籍/Grimoire（暗棕黑+金色+Cormorant Garamond 字体）、工坊/Studio（暖奶油+赤陶+Nunito 字体）
+- **主题切换**：侧边栏底部切换按钮，循环切换，localStorage 持久化，无 hydration 闪烁
+- **验证**：Playwright 截图确认三个主题在生产环境渲染正确
+- **构建性能**：缓存命中，构建时间从 39s 降至 26s

@@ -55,7 +55,6 @@ export default function SkillWorkshopPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState<Stage | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [parsedSkill, setParsedSkill] = useState<ParsedSkill | null>(null)
   const [saving, setSaving] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -78,7 +77,7 @@ export default function SkillWorkshopPage() {
       const res = await fetch('/api/skill-workshop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId }),
+        body: JSON.stringify({ message: text, history: messages.map(m => ({ role: m.role, content: m.content })) }),
       })
 
       if (!res.ok || !res.body) {
@@ -110,7 +109,6 @@ export default function SkillWorkshopPage() {
             if (event.type === 'stage') {
               setStage({ emoji: event.emoji, text: event.text })
             } else if (event.type === 'done') {
-              setSessionId(event.sessionId)
               setMessages((prev) => [
                 ...prev,
                 { role: 'assistant', content: event.reply },
@@ -160,7 +158,6 @@ export default function SkillWorkshopPage() {
         toast.success(`Skill「${parsedSkill.name}」已保存，可在对话页使用了！`)
         setParsedSkill(null)
         setMessages([])
-        setSessionId(null)
       }
     } catch {
       toast.error('保存失败')
@@ -171,7 +168,6 @@ export default function SkillWorkshopPage() {
 
   function reset() {
     setMessages([])
-    setSessionId(null)
     setParsedSkill(null)
     setInput('')
     setStage(null)

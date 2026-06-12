@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { spawn } from 'child_process'
+import OpenAI from 'openai'
 
 const SKILL_GENERATOR_PROMPT = `你是一名 AI 助手，专门帮助用户设计 AI Skill（技能）。
 
@@ -39,37 +39,15 @@ const SKILL_GENERATOR_PROMPT = `你是一名 AI 助手，专门帮助用户设�
 - prompt 要详细，包含角色定位、输出格式要求、注意事项
 - 语言全部用中文`
 
-function runOpenclaw(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cmdPath = process.env.OPENCLAW_PATH ||
-      'C:/Users/24366/AppData/Roaming/npm/openclaw.cmd'
-    const mjsPath = cmdPath.replace(/openclaw\.cmd$/i, 'node_modules/openclaw/openclaw.mjs')
+function getAIClient(): OpenAI {
+  const apiKey = process.env.AI_API_KEY
+  const baseURL = process.env.AI_BASE_URL || 'https://api.deepseek.com/v1'
+  if (!apiKey) throw new Error('AI_API_KEY 环境变量未配置')
+  return new OpenAI({ apiKey, baseURL })
+}
 
-    const proc = spawn(process.execPath, [mjsPath, ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
-
-    const timer = setTimeout(() => {
-      proc.kill()
-      reject(new Error('OpenClaw 响应超时（300s）'))
-    }, 300000)
-
-    proc.on('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) {
-        reject(new Error(`OpenClaw 退出码 ${code}: ${stderr.slice(0, 300)}`))
-      } else {
-        resolve(stdout.trim())
-      }
-    })
-  })
+function getModel(): string {
+  return process.env.AI_MODEL || 'deepseek-chat'
 }
 
 // SSE helper
@@ -85,7 +63,13 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { message, sessionId, action, skillJson, thinkingMode = 'off' } = body
+  const { message, history = [], action, skillJson, thinkingMode = 'off' } = body as {
+    message?: string
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>
+    action?: string
+    skillJson?: Record<string, unknown>
+    thinkingMode?: 'off' | 'high'
+  }
 
   // action=save: insert skill into DB (no streaming needed)
   if (action === 'save') {
@@ -109,18 +93,9 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: 'message required' }), { status: 400 })
   }
 
-  // Use short session IDs — openclaw has a ~20 char limit on session-id
-  // Format: sw-<8 chars of uid>-<base36 timestamp last 4 digits>
-  // openclaw session-id: alphanumeric only, no hyphens, keep short
-  const tsShort = Date.now().toString(36).slice(-5)
-  const uid8 = user.id.replace(/-/g, '').slice(0, 6)
-  const sid = sessionId || `sw${uid8}${tsShort}`
+  const abortController = new AbortController()
+  request.signal.addEventListener('abort', () => abortController.abort())
 
-  const fullMessage = sessionId
-    ? message
-    : `${SKILL_GENERATOR_PROMPT}\n\n---\n用户需求：${message}`
-
-  // Stream progress via SSE
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
@@ -135,7 +110,6 @@ export async function POST(request: NextRequest) {
         { emoji: '✨', text: '最后润色中...' },
       ]
 
-      // Send fake progress ticks while openclaw runs
       let stageIdx = 0
       send({ type: 'stage', ...STAGES[stageIdx] })
 
@@ -145,19 +119,31 @@ export async function POST(request: NextRequest) {
       }, 4000)
 
       try {
-        const raw = await runOpenclaw([
-          'agent', '--local',
-          '--session-id', sid,
-          '--message', fullMessage,
-          '--timeout', '270',
-          '--thinking', thinkingMode === 'high' ? 'high' : 'off',
-          '--json',
-        ])
+        const client = getAIClient()
+        const model = getModel()
+
+        // Build message history: system prompt + prior turns + current message
+        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+          { role: 'system', content: SKILL_GENERATOR_PROMPT },
+          ...history,
+          { role: 'user', content: message },
+        ]
+
+        const extra: Record<string, unknown> = {}
+        if (thinkingMode === 'high') {
+          extra.thinking = { type: 'enabled', budget_tokens: 8000 }
+        }
+
+        const completion = await client.chat.completions.create({
+          model,
+          messages,
+          max_tokens: 4096,
+          ...extra,
+        }, { signal: abortController.signal })
 
         clearInterval(stageTicker)
 
-        const data = JSON.parse(raw)
-        const reply: string = data?.payloads?.[0]?.text || ''
+        const reply = completion.choices[0]?.message?.content ?? ''
 
         // Extract ```json ... ``` block
         const jsonMatch = reply.match(/```json\s*([\s\S]*?)```/)
@@ -166,10 +152,11 @@ export async function POST(request: NextRequest) {
           try { parsedSkill = JSON.parse(jsonMatch[1].trim()) } catch { /* not valid yet */ }
         }
 
-        send({ type: 'done', reply, sessionId: sid, parsedSkill })
-      } catch (err: any) {
+        send({ type: 'done', reply, parsedSkill })
+      } catch (err: unknown) {
         clearInterval(stageTicker)
-        send({ type: 'error', error: err.message })
+        const msg = err instanceof Error ? err.message : String(err)
+        send({ type: 'error', error: msg })
       } finally {
         controller.close()
       }
