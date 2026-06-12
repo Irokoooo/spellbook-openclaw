@@ -1,0 +1,15 @@
+supabase_url = "https://hbnaqcjpdabicpyzoagp.supabase.co"
+supabase_anon_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhibmFxY2pwZGFiaWNweXpvYWdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MjQ4NDMsImV4cCI6MjA5NjQwMDg0M30.Z6Q72pXNAvu5bFCHxEtieOZiLsrj3mrSSKpadVEFwyo"
+agent_id = "在SpellBook设置页注册Agent后粘贴ID到这里"
+
+# How often to send a heartbeat (seconds)
+heartbeat_interval = 30
+
+# How long to wait between polling for queued tasks when idle (seconds)
+poll_interval = 5
+
+# openclaw executable — on Windows use the .cmd path
+openclaw_path = "C:/Users/24366/AppData/Roaming/npm/openclaw.cmd"
+
+# Local SQLite database path
+local_db_path = "./data/db.sqlite"
