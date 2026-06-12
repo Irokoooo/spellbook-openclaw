@@ -130,3 +130,33 @@
 - **主题切换**：侧边栏底部切换按钮，循环切换，localStorage 持久化，无 hydration 闪烁
 - **验证**：Playwright 截图确认三个主题在生产环境渲染正确
 - **构建性能**：缓存命中，构建时间从 39s 降至 26s
+
+---
+
+## 2026-06-12 Codex 全功能深度测试
+
+- **动作**：用账号 2436698411@qq.com 深度测试生产环境各功能
+- **环境**：https://web-rho-puce-53.vercel.app（Vercel 生产部署）
+- **测试工具**：Node REPL + Playwright 自动化
+
+### 测试结果
+
+| 功能 | 结果 | 详情 |
+|------|------|------|
+| 登录/注册 | ✅ PASS | Supabase Auth 正常，/chat 页面加载 |
+| 聊天对话 | ✅ PASS | 消息发送、流式响应正常 |
+| Skill 管理 | ✅ PASS | 5 个 Skills 已创建：市场盘点助手、公司背景调研、营销文案生成、环境自检助手、解决方案撰写 |
+| Skill 工坊 | ✅ PASS | /skills/workshop 页面正常 |
+| 任务系统 | ✅ PASS | /tasks 页面加载正常 |
+| 设置页 | ✅ PASS | 账号信息、Agent 注册（4efb146d）、Agent 在线状态正常 |
+| 三主题切换 | ✅ PASS | 默认→典籍→工坊→默认 循环切换，data-theme 属性变化正确，无 UI 闪烁 |
+
+### 本地 vs 部署对比
+- 本地 dev server (localhost:3000) 与生产 (Vercel) UI 完全一致
+- 背景色、样式表、data-theme 属性均匹配
+- Vercel 构建缓存命中，部署正常
+
+### 待办
+- [ ] DeepSeek API Key：需在 DeepSeek 控制台删除泄露的 Key，生成新 Key 并更新到 ~/.openclaw/.env
+- [ ] .env.local 干净，无硬编码 Key；.gitignore 已正确忽略 .claude/ 和 .env*
+- [ ] 本地 Agent (Python) 尚未安装运行（下次测试重点）
