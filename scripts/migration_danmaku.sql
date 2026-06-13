@@ -1,7 +1,7 @@
 ﻿-- Danmaku comments table
 CREATE TABLE IF NOT EXISTS danmaku_comments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   content VARCHAR(120) NOT NULL,
   color VARCHAR(7) DEFAULT '#4ECDC4',
   created_at TIMESTAMPTZ DEFAULT NOW()

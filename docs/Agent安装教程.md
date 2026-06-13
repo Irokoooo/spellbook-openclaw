@@ -1,4 +1,4 @@
-﻿# 🧙 SpellBook Agent 从零到跑完全指南
+# 🧙 SpellBook Agent 从零到跑完全指南
 
 欢迎！这篇教程会带你 **一步一步** 把 SpellBook 本地 Agent 跑起来。放心，就算你电脑上什么都没有，也能在几分钟内搞定。
 
