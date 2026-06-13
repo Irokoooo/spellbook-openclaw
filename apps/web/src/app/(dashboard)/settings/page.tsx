@@ -369,11 +369,11 @@ DEEPSEEK_API_KEY=${apiKey}`
         {/* Danmaku Toggle */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">????</CardTitle>
+            <CardTitle className="text-base">弹幕评论</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-zinc-500">
-              ???????????????????????????????
+              开启后，全站页面底部会显示其他用户的弹幕评论，一起互动吧！
             </p>
             <div className="flex items-center gap-3">
               <button
@@ -383,7 +383,7 @@ DEEPSEEK_API_KEY=${apiKey}`
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${danmakuOn ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
               <span className="text-sm text-zinc-600">
-                {danmakuOn ? '?????' : '?????'}
+                {danmakuOn ? '已开启' : '已关闭'}
               </span>
             </div>
           </CardContent>
@@ -397,7 +397,7 @@ DEEPSEEK_API_KEY=${apiKey}`
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
-                ??????
+                用户手册
               </CardTitle>
               {manualOpen ? <ChevronUp className="h-4 w-4 text-zinc-400" /> : <ChevronDown className="h-4 w-4 text-zinc-400" />}
             </div>
@@ -414,7 +414,7 @@ DEEPSEEK_API_KEY=${apiKey}`
                   dangerouslySetInnerHTML={{ __html: manualContent }}
                 />
               ) : (
-                <p className="text-sm text-zinc-400 text-center py-4">????????</p>
+                <p className="text-sm text-zinc-400 text-center py-4">加载失败，请稍后重试</p>
               )}
             </CardContent>
           )}
@@ -427,7 +427,7 @@ DEEPSEEK_API_KEY=${apiKey}`
           <div className="absolute inset-0 bg-black/30" onClick={() => setTutorialOpen(false)} />
           <div className="relative w-full max-w-2xl bg-white shadow-2xl h-full overflow-hidden flex flex-col animate-in slide-in-from-right">
             <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h2 className="text-lg font-semibold text-zinc-900">?? SpellBook Agent ????</h2>
+              <h2 className="text-lg font-semibold text-zinc-900">🧙 SpellBook Agent 安装教程</h2>
               <button onClick={() => setTutorialOpen(false)} className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition">
                 <X className="h-5 w-5" />
               </button>
@@ -443,7 +443,7 @@ DEEPSEEK_API_KEY=${apiKey}`
                   dangerouslySetInnerHTML={{ __html: tutorialContent }}
                 />
               ) : (
-                <p className="text-sm text-zinc-400 text-center py-8">??????</p>
+                <p className="text-sm text-zinc-400 text-center py-8">加载失败，请稍后重试</p>
               )}
             </div>
           </div>
