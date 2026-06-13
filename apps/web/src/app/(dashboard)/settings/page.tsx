@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Download } from 'lucide-react'
+import { Download, BookOpen, MessageCircle, ChevronDown, ChevronUp, X } from 'lucide-react'
 import type { AgentStatus } from '@/types'
+import { marked } from 'marked'
 
 interface AgentInfo {
   id: string
@@ -54,6 +55,10 @@ function downloadFile(filename: string, content: string) {
 export default function SettingsPage() {
   const [outputDir, setOutputDir] = useState('')
   const [savedDir, setSavedDir] = useState('')
+  const [danmakuOn, setDanmakuOn] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualContent, setManualContent] = useState('')
+  const [manualLoading, setManualLoading] = useState(false)
 
   const STORAGE_KEY = 'spellbook_default_output_dir'
 
@@ -110,7 +115,28 @@ DEEPSEEK_API_KEY=${apiKey}`
       setAgents(data ?? [])
     }
     load()
+    const dm = localStorage.getItem('spellbook_danmaku_enabled')
+    if (dm === 'true') setDanmakuOn(true)
   }, [supabase])
+
+  async function toggleDanmaku() {
+    const next = !danmakuOn
+    setDanmakuOn(next)
+    localStorage.setItem('spellbook_danmaku_enabled', String(next))
+  }
+
+  async function openManual() {
+    if (manualContent) { setManualOpen(true); return }
+    setManualLoading(true)
+    setManualOpen(true)
+    try {
+      const res = await fetch('/api/user-manual')
+      if (res.ok) {
+        const data = await res.json()
+        setManualContent(marked.parse(data.content) as string)
+      }
+    } catch {} finally { setManualLoading(false) }
+  }
 
   async function registerAgent() {
     if (!agentName.trim()) return
@@ -333,6 +359,62 @@ DEEPSEEK_API_KEY=${apiKey}`
               或者通过命令行运行 <code className="font-mono bg-amber-100 px-1 rounded">openclaw config</code> 完成配置。
             </div>
           </CardContent>
+        </Card>
+
+        <Separator />
+
+        {/* Danmaku Toggle */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">????</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-zinc-500">
+              ???????????????????????????????
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleDanmaku}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${danmakuOn ? 'bg-emerald-500' : 'bg-zinc-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${danmakuOn ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+              <span className="text-sm text-zinc-600">
+                {danmakuOn ? '?????' : '?????'}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator />
+
+        {/* User Manual */}
+        <Card>
+          <CardHeader className="cursor-pointer" onClick={openManual}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                ??????
+              </CardTitle>
+              {manualOpen ? <ChevronUp className="h-4 w-4 text-zinc-400" /> : <ChevronDown className="h-4 w-4 text-zinc-400" />}
+            </div>
+          </CardHeader>
+          {manualOpen && (
+            <CardContent>
+              {manualLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent" />
+                </div>
+              ) : manualContent ? (
+                <div
+                  className="prose prose-sm max-w-none prose-headings:text-zinc-800 prose-p:text-zinc-600 prose-a:text-emerald-600 prose-code:text-emerald-700 prose-code:bg-zinc-100 prose-code:px-1 prose-code:rounded prose-strong:text-zinc-800 prose-li:text-zinc-600 prose-table:border prose-th:bg-zinc-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-hr:border-zinc-200 max-h-[60vh] overflow-y-auto rounded-lg border bg-zinc-50/50 p-4"
+                  dangerouslySetInnerHTML={{ __html: manualContent }}
+                />
+              ) : (
+                <p className="text-sm text-zinc-400 text-center py-4">????????</p>
+              )}
+            </CardContent>
+          )}
         </Card>
       </div>
     </div>
