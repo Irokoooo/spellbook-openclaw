@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -59,6 +59,9 @@ export default function SettingsPage() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualContent, setManualContent] = useState('')
   const [manualLoading, setManualLoading] = useState(false)
+  const [tutorialOpen, setTutorialOpen] = useState(false)
+  const [tutorialContent, setTutorialContent] = useState('')
+  const [tutorialLoading, setTutorialLoading] = useState(false)
 
   const STORAGE_KEY = 'spellbook_default_output_dir'
 
@@ -417,6 +420,35 @@ DEEPSEEK_API_KEY=${apiKey}`
           )}
         </Card>
       </div>
+
+      {/* Agent Tutorial Drawer */}
+      {tutorialOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setTutorialOpen(false)} />
+          <div className="relative w-full max-w-2xl bg-white shadow-2xl h-full overflow-hidden flex flex-col animate-in slide-in-from-right">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold text-zinc-900">?? SpellBook Agent ????</h2>
+              <button onClick={() => setTutorialOpen(false)} className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {tutorialLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-emerald-500 border-t-transparent" />
+                </div>
+              ) : tutorialContent ? (
+                <div
+                  className="prose prose-sm max-w-none prose-headings:text-zinc-800 prose-p:text-zinc-600 prose-a:text-emerald-600 prose-code:text-emerald-700 prose-code:bg-zinc-100 prose-code:px-1 prose-code:rounded prose-strong:text-zinc-800 prose-li:text-zinc-600 prose-table:border prose-th:bg-zinc-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-hr:border-zinc-200 prose-blockquote:border-emerald-400 prose-blockquote:bg-emerald-50/50"
+                  dangerouslySetInnerHTML={{ __html: tutorialContent }}
+                />
+              ) : (
+                <p className="text-sm text-zinc-400 text-center py-8">??????</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
