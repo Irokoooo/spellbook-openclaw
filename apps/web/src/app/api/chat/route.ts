@@ -19,7 +19,7 @@ function buildPlanningPrompt(userMessage: string): string {
 用户任务：${userMessage}`
 }
 
-function buildRouterPrompt(skills: SkillSummary[], collectedFields: Record<string, string>): string {
+function buildRouterPrompt(skills: SkillSummary[], collectedFields: Record<string, string>, lastOutputPath?: string, defaultOutputDir?: string): string {
   const skillList = skills.map((s) => {
     const fields = s.form_fields.map((f) =>
       `    - ${f.name}（${f.label}）: ${f.type}${f.required ? ' [必填]' : ''}${f.options ? `，选项: ${f.options.join('/')}` : ''}`
@@ -31,8 +31,16 @@ function buildRouterPrompt(skills: SkillSummary[], collectedFields: Record<strin
     ? JSON.stringify(collectedFields, null, 2)
     : '（暂无）'
 
-  return `你是 SpellBook 的智能任务助手，同时也是一个具备完整工具能力的 AI 执行者（可访问网络、读写文件、运行代码）。
+return `你是 SpellBook 的智能任务助手，运行在用户的本地电脑上（通过 OpenClaw Agent）。你**可以直接在用户的电脑上读写文件**——不需要询问用户"是否允许"或说自己"无法访问本地文件系统"。
 
+## 重要：你有本地文件系统权限
+
+你的任务输出会通过 SpellBook Agent 写入用户的电脑。用户让你保存文件时：
+- **直接写**，不要说"我无法访问您的本地文件系统"或"请自行复制"
+- 文件默认保存到用户的桌面（Desktop），除非用户指定了其他路径
+- 如果用户说"保存到桌面"、"给我一个文件"、"输出为 md"等，直接执行
+
+## 可用 Skills
 ## 可用 Skills
 
 ${skillList}
@@ -128,7 +136,18 @@ ACTION:SAVE_SKILL
 
 - 绝对不要捏造 skill_id，只能使用上面列出的 id
 - Skill 工坊只用于「规划模式」，不要在用户已经在实操时推荐去 Skill 工坊
-- 回复使用中文`
+- 回复使用中文
+- 回复使用中文
+
+## 多轮对话 & 文件迭代
+
+${lastOutputPath ? `### 上一次输出文件\路径: \`${lastOutputPath}\`
+
+用户的上一条消息可能是针对这个文件的内容进行修改或追加。如果需要修改/追加到这个文件，请在回复末尾标明：
+\`ACTION:APPEND_TO_FILE ${lastOutputPath}\`
+
+如果用户要求‘加一列’、‘补充数据’、‘修改格式’等针对已有文件的操作，优先使用 \`ACTION:APPEND_TO_FILE\`。` : defaultOutputDir ? `### 默认输出目录\`${defaultOutputDir}\`\写入文件时应优先使用此目录。` : ""}
+`
 }
 
 function getAIClient(): OpenAI {
@@ -213,12 +232,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { message, sessionId, collectedFields = {}, thinkingMode = 'off', originalMessage } = body as {
+  const { message, sessionId, collectedFields = {}, thinkingMode = 'off', originalMessage, lastOutputPath, defaultOutputDir } = body as {
     message: string
     sessionId: string | null
     collectedFields: Record<string, string>
     thinkingMode?: 'off' | 'high'
     originalMessage?: string
+    lastOutputPath?: string
+    defaultOutputDir?: string
   }
 
   if (!message?.trim()) {
@@ -246,7 +267,7 @@ export async function POST(request: NextRequest) {
     ? `${originalMessage}\n\n【用户在确认计划时提出了修改意见，请严格按照修改后的要求执行】\n用户修改要求：${message}`
     : (originalMessage ?? message)
   const fullMessage = (isFirstTurn || isExecutionConfirmation)
-    ? `${buildRouterPrompt(skills, collectedFields)}\n\n---\n用户消息：${effectiveTask}`
+    ? `${buildRouterPrompt(skills, collectedFields, lastOutputPath, defaultOutputDir)}\n\n---\n用户消息：${effectiveTask}`
     : message
 
   const encoder = new TextEncoder()
@@ -341,10 +362,15 @@ export async function POST(request: NextRequest) {
         const submitAction = parseSubmitAction(reply)
         const saveSkillAction = parseSaveSkillAction(reply)
 
+        const fileMatch = reply.match(/ACTION:SAVE_FILE\s+(.+)/)
+        const filePath = fileMatch?.[1]?.trim() || ''
+
         const visibleReply = reply
           .replace(/ACTION:SUBMIT\s*```json[\s\S]*?```/g, '')
           .replace(/ACTION:SAVE_SKILL\s*```json[\s\S]*?```/g, '')
           .trim()
+
+          .replace(/ACTION:SAVE_FILE\s+.+/g, "")
 
         if (submitAction) {
           send({
@@ -364,8 +390,36 @@ export async function POST(request: NextRequest) {
             draft: saveSkillAction,
             tokenUsage: null,
           })
+        } else if (isExecutionConfirmation) {
+          if (filePath) {
+            send({ type: "save_file", path: filePath, content: reply })
+          }
+          let createdTaskId = null
+          try {
+            const { data: userAgents } = await supabase
+              .from('agents')
+              .select('id')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: true })
+              .limit(1)
+            const agentId = userAgents?.[0]?.id
+            if (!agentId) throw new Error('No agent found')
+            const { data: task } = await supabase
+              .from('tasks')
+              .insert({
+                agent_id: agentId,
+                skill_name: 'AI 直接执行',
+                input: { description: originalMessage ?? message },
+                output: visibleReply || reply,
+                status: 'completed',
+              })
+              .select('id')
+              .single()
+            if (task) createdTaskId = task.id
+          } catch { /* best-effort */ }
+          send({ type: 'reply', reply, sessionId: sid, tokenUsage: null, taskId: createdTaskId, outputPath: defaultOutputDir || undefined })
         } else {
-          send({ type: 'reply', reply, sessionId: sid, tokenUsage: null })
+          send({ type: 'reply', reply, sessionId: sid, tokenUsage: null, outputPath: defaultOutputDir || undefined })
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err)
