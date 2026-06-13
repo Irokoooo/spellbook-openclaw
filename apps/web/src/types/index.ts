@@ -42,6 +42,7 @@ export interface Task {
   output: string | null
   status: TaskStatus
   error: string | null
+  progress: string | null
   created_at: string
   updated_at: string
 }

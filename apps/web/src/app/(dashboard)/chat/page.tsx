@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useRef } from 'react'
 import { useChatContext } from '@/contexts/ChatContext'
@@ -16,7 +16,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import TaskResult from '@/components/chat/TaskResult'
+import SkillAutocomplete from '@/components/chat/SkillAutocomplete'
+import type { Skill } from '@/types'
 import { useState } from 'react'
+import { gsap } from 'gsap'
+import { fireSkillConfetti } from '@/lib/confetti'
 
 const WELCOME_SUGGESTIONS = [
   '我想对深圳某个项目做竞品市场盘点',
@@ -35,12 +39,37 @@ export default function ChatPage() {
 
   const [input, setInput] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [slashOpen, setSlashOpen] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const [slashAnchorRect, setSlashAnchorRect] = useState<DOMRect | null>(null)
+  const inputWrapperRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lastMsgIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const viewport = scrollRef.current?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement | null
     if (viewport) viewport.scrollTop = viewport.scrollHeight
+  }, [messages])
+
+  // Animate newly added message bubbles
+  useEffect(() => {
+    if (messages.length === 0) return
+    const last = messages[messages.length - 1]
+    if (last.id === lastMsgIdRef.current) return
+    lastMsgIdRef.current = last.id
+
+    const el = document.querySelector(`[data-msg-id="${last.id}"]`) as HTMLElement | null
+    if (!el) return
+
+    const mm = gsap.matchMedia()
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo(el,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out', clearProps: 'transform,opacity' }
+      )
+    })
+    return () => mm.revert()
   }, [messages])
 
   async function handleSend(text: string) {
@@ -49,6 +78,38 @@ export default function ChatPage() {
     await sendMessage(text)
   }
 
+  function handleInputChange(value: string) {
+    setInput(value)
+    if (value === '/') {
+      // Open autocomplete when user types just '/'
+      const rect = inputWrapperRef.current?.querySelector('textarea')?.getBoundingClientRect()
+      if (rect) setSlashAnchorRect(rect)
+      setSlashQuery('')
+      setSlashOpen(true)
+    } else if (value.startsWith('/')) {
+      setSlashQuery(value.slice(1))
+      setSlashOpen(true)
+    } else {
+      setSlashOpen(false)
+    }
+  }
+
+  function handleSkillSelect(skill: Skill) {
+    setSlashOpen(false)
+    // Build a template from the skill's form fields
+    const fields = (skill.form_fields || []).map((f) => {
+      const optional = f.required ? '' : '（可选）'
+      if (f.type === 'select' && f.options) {
+        return `${f.label}：选项: ${f.options.join("/")}${optional ? " (" + optional + ")" : ""}`
+      }
+        return `${f.label}：${optional}`
+    }).join('\n')
+    const template = fields
+      ? `使用 Skill「${skill.name}」\n${fields}`
+      : `使用 Skill「${skill.name}」`
+    setInput(template)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -102,7 +163,7 @@ export default function ChatPage() {
             {messages.map((msg) => {
               if (msg.type === 'user') {
                 return (
-                  <div key={msg.id} className="flex justify-end">
+                  <div key={msg.id} data-msg-id={msg.id} className="flex justify-end">
                     <div className="max-w-lg rounded-2xl rounded-tr-sm bg-violet-600 px-4 py-2.5 text-white text-sm leading-relaxed">
                       {msg.content}
                     </div>
@@ -112,7 +173,7 @@ export default function ChatPage() {
 
               if (msg.type === 'assistant') {
                 return (
-                  <div key={msg.id} className="flex justify-start gap-2.5">
+                  <div key={msg.id} data-msg-id={msg.id} className="flex justify-start gap-2.5">
                     <div className="mt-1 h-7 w-7 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
                       <Sparkles className="h-3.5 w-3.5 text-violet-600" />
                     </div>
@@ -167,9 +228,16 @@ export default function ChatPage() {
       <div className="border-t bg-white px-6 py-4">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <p className="text-xs text-zinc-400">
-              AI 助手会理解你的需求，自动匹配 Skill 并收集所需信息
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-zinc-400">
+                AI 助手会理解你的需求，自动匹配 Skill 并收集所需信息
+              </p>
+              {totalUsage.input + totalUsage.output > 0 && (
+                <span className="text-[10px] text-zinc-300 border-l pl-2 ml-1">
+                  ~{Math.round((totalUsage.input + totalUsage.output) / 1000)}k tokens
+                </span>
+              )}
+            </div>
             <Select value={thinkingMode} onValueChange={(value) => setThinkingMode(value as 'off' | 'high')}>
               <SelectTrigger size="sm" className="bg-white text-xs text-zinc-600">
                 <SelectValue />
@@ -180,13 +248,13 @@ export default function ChatPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex gap-2 items-end rounded-xl border bg-zinc-50 px-3 py-2 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-1">
+          <div className="relative flex gap-2 items-end rounded-xl border bg-zinc-50 px-3 py-2 focus-within:ring-2 focus-within:ring-violet-500 focus-within:ring-offset-1" ref={inputWrapperRef}>
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="说说你想做什么…（Enter 发送，Shift+Enter 换行）"
+              placeholder="说说你想做什么…（输入 / 选择 Skill，Enter 发送，Shift+Enter 换行）"
               className="flex-1 resize-none border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[40px] max-h-[120px] text-sm py-1"
               rows={1}
               disabled={loading}
@@ -236,9 +304,24 @@ export default function ChatPage() {
 // ─── Welcome Screen ───────────────────────────────────────────────────────────
 
 function WelcomeScreen({ onSuggestion }: { onSuggestion: (s: string) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const mm = gsap.matchMedia()
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.from(el.querySelectorAll('.welcome-item'), {
+        opacity: 0, y: 10, duration: 0.25, ease: 'power2.out',
+        stagger: 0.05, clearProps: 'transform,opacity',
+      })
+    })
+    return () => mm.revert()
+  }, [])
+
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-72 gap-6 text-center max-w-lg mx-auto">
-      <div className="space-y-2">
+    <div className="flex flex-col items-center justify-center h-full min-h-72 gap-6 text-center max-w-lg mx-auto" ref={containerRef}>
+      <div className="welcome-item space-y-2">
         <div className="h-12 w-12 rounded-full bg-violet-100 flex items-center justify-center mx-auto">
           <Sparkles className="h-6 w-6 text-violet-600" />
         </div>
@@ -250,7 +333,7 @@ function WelcomeScreen({ onSuggestion }: { onSuggestion: (s: string) => void }) 
           <button
             key={s}
             onClick={() => onSuggestion(s)}
-            className="text-left text-sm rounded-lg border bg-white px-4 py-2.5 text-zinc-600 hover:border-violet-300 hover:bg-violet-50 transition-colors"
+            className="welcome-item text-left text-sm rounded-lg border bg-white px-4 py-2.5 text-zinc-600 hover:border-violet-300 hover:bg-violet-50 transition-colors"
           >
             {s}
           </button>
@@ -296,13 +379,55 @@ function PlanCard({ msg }: { msg: PlanMessage }) {
 // ─── Cost Badge ───────────────────────────────────────────────────────────────
 
 function CostBadge({ usage }: { usage: TokenUsage }) {
+  const [showPanel, setShowPanel] = useState(false)
   const cost = (usage.input / 1_000_000) * 1 + (usage.cacheRead / 1_000_000) * 0.1 + (usage.output / 1_000_000) * 2
   if (usage.input + usage.output === 0) return null
+  
+  const inputTokens = usage.input
+  const outputTokens = usage.output
+  const cacheTokens = usage.cacheRead
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-1.5 rounded-full border bg-white/90 backdrop-blur-sm px-3 py-1.5 text-xs text-zinc-500 shadow-md">
-      <Coins className="h-3.5 w-3.5 text-amber-500" />
-      <span>¥{cost < 0.001 ? '<0.001' : cost.toFixed(3)}</span>
-    </div>
+    <>
+      <button
+        onClick={() => setShowPanel(true)}
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-1.5 rounded-full border bg-white/90 backdrop-blur-sm px-3 py-1.5 text-xs text-zinc-500 shadow-md hover:shadow-lg hover:border-violet-200 transition-all"
+      >
+        <Coins className="h-3.5 w-3.5 text-amber-500" />
+        <span>¥{cost < 0.001 ? '<0.001' : cost.toFixed(3)}</span>
+      </button>
+      {showPanel && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20" onClick={() => setShowPanel(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl border p-6 w-80 max-w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-zinc-900">用量统计</h3>
+              <button className="text-zinc-400 hover:text-zinc-600 text-sm" onClick={() => setShowPanel(false)}>✕</button>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">输入 Token</span>
+                <span className="text-zinc-800 font-medium">{inputTokens.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">输出 Token</span>
+                <span className="text-zinc-800 font-medium">{outputTokens.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">缓存命中</span>
+                <span className="text-zinc-800 font-medium">{cacheTokens.toLocaleString()}</span>
+              </div>
+              <div className="border-t pt-3 flex justify-between text-sm font-semibold">
+                <span className="text-zinc-600">总费用</span>
+                <span className="text-amber-600">¥{cost.toFixed(4)}</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-2 leading-relaxed">
+                价格计算：输入 ¥1/百万 tokens ⋅ 输出 ¥2/百万 tokens ⋅ 缓存 ¥0.1/百万 tokens
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -311,6 +436,7 @@ function SkillDraftCard({ msg, onConfirm }: { msg: SkillDraftMessage; onConfirm:
   async function handleConfirm() {
     setSaved(true)
     await onConfirm()
+    fireSkillConfetti()
   }
 
   return (
@@ -353,3 +479,5 @@ function SkillDraftCard({ msg, onConfirm }: { msg: SkillDraftMessage; onConfirm:
     </div>
   )
 }
+
+

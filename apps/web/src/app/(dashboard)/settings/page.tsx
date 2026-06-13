@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -52,8 +52,45 @@ function downloadFile(filename: string, content: string) {
 }
 
 export default function SettingsPage() {
+  const [outputDir, setOutputDir] = useState('')
+  const [savedDir, setSavedDir] = useState('')
+
+  const STORAGE_KEY = 'spellbook_default_output_dir'
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY) || ''
+    setOutputDir(saved)
+    setSavedDir(saved)
+  }, [])
+
+  function saveOutputDir(dir: string) {
+    localStorage.setItem(STORAGE_KEY, dir)
+    setSavedDir(dir)
+    toast.success('默认输出目录已保存')
+  }
   const [agentName, setAgentName] = useState('')
   const [agents, setAgents] = useState<AgentInfo[]>([])
+
+  function downloadOpenClawEnv() {
+    const apiKey = (document.getElementById("openclaw-apikey") as HTMLInputElement)?.value || ""
+    const baseUrl = (document.getElementById("openclaw-baseurl") as HTMLInputElement)?.value || ""
+    if (!apiKey) { toast.error("请先输入 API Key"); return }
+    let envContent = `# SpellBook OpenClaw - Environment Configuration
+# Generated from SpellBook settings page
+
+DEEPSEEK_API_KEY=${apiKey}`
+    if (baseUrl) {
+      envContent += `\nOPENCLAW_BASE_URL=${baseUrl}`
+    }
+    downloadFile(".env", envContent)
+    toast.success(".env 配置文件已下载，请放到 %USERPROFILE%\\\\.openclaw\\\\.env")
+  }
+
+  function showOpenClawHelp() {
+    toast("配置说明", {
+      description: "下载 .env 文件后，放到 C:\\\\Users\\\\你的用户名\\\\.openclaw\\\\.env 即可。或者运行 openclaw config 进入引导配置。"
+    })
+  }
   const [creating, setCreating] = useState(false)
   const [userEmail, setUserEmail] = useState('')
   const supabase = createClient()
@@ -175,6 +212,11 @@ export default function SettingsPage() {
                         </Badge>
                       </div>
                       <p className="text-xs text-zinc-400 font-mono mt-0.5 truncate">{agent.id}</p>
+                      {agent.last_seen && (
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          ???{new Date(agent.last_seen).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -217,6 +259,78 @@ export default function SettingsPage() {
               <Button onClick={registerAgent} disabled={creating || !agentName.trim()}>
                 {creating ? '注册中...' : '注册并下载配置'}
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* One-Click Installer */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">一键安装 Agent</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-zinc-500">
+              下载安装包直接运行，无需手动安装 Python 和依赖项。安装程序会自动检测已安装的 openclaw，
+              并引导您完成配置。
+            </p>
+            <div className="flex gap-2">
+              <a href="/downloads/SpellBook_Agent_Setup.exe" download>
+                <Button>
+                  <Download className="h-4 w-4 mr-1.5" />
+                  下载安装包 (16MB)
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* OpenClaw Config */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">龙虾（OpenClaw）配置</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-zinc-500">
+              配置 AI 模型的接入信息。Agent 需要通过龙虾调用 AI 来执行任务。
+              支持任意 <strong>OpenAI 兼容</strong> 的 API 提供商。
+            </p>
+
+            <div className="grid gap-3">
+              <div>
+                <label className="text-xs font-medium text-zinc-500 block mb-1">API Key</label>
+                <Input
+                  id="openclaw-apikey"
+                  type="password"
+                  placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-zinc-500 block mb-1">
+                  Base URL
+                  <span className="text-zinc-300 font-normal">（可选，默认 DeepSeek）</span>
+                </label>
+                <Input
+                  id="openclaw-baseurl"
+                  placeholder="https://api.deepseek.com"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  常用：OpenAI: api.openai.com/v1 · 通义千问: dashscope.aliyuncs.com/compatible-mode/v1 · 智谱: open.bigmodel.cn/api/paas/v4 · 月之暗面: api.moonshot.cn/v1
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button size="sm" id="download-openclaw-env" onClick={downloadOpenClawEnv}>
+                下载配置文件 (.env)
+              </Button>
+              <Button size="sm" variant="outline" id="show-openclaw-help" onClick={showOpenClawHelp}>
+                查看详细指引
+              </Button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+              下载后将文件放到 <code className="font-mono bg-amber-100 px-1 rounded">%USERPROFILE%\.openclaw\.env</code>（替换已有文件），
+              或者通过命令行运行 <code className="font-mono bg-amber-100 px-1 rounded">openclaw config</code> 完成配置。
             </div>
           </CardContent>
         </Card>

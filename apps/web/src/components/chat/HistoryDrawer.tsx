@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, Search as SearchIcon } from 'lucide-react'
 
 interface Conversation {
   id: string
@@ -22,6 +22,7 @@ interface HistoryDrawerProps {
 export default function HistoryDrawer({ open, onClose, onSelect }: HistoryDrawerProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const supabase = createClient()
 
   useEffect(() => {
@@ -58,6 +59,17 @@ export default function HistoryDrawer({ open, onClose, onSelect }: HistoryDrawer
         <SheetHeader className="border-b px-4 py-3">
           <SheetTitle className="text-sm font-semibold text-zinc-900">历史对话</SheetTitle>
         </SheetHeader>
+        <div className="border-b px-3 py-2">
+          <div className="flex items-center gap-2 rounded-lg border bg-zinc-50 px-2.5 py-1.5 text-sm">
+            <SearchIcon className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+            <input
+              className="flex-1 bg-transparent outline-none text-sm text-zinc-700 placeholder:text-zinc-400"
+              placeholder="搜索对话..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
         <ScrollArea className="flex-1">
           {loading ? (
             <div className="p-4 space-y-2">
@@ -72,7 +84,7 @@ export default function HistoryDrawer({ open, onClose, onSelect }: HistoryDrawer
             </div>
           ) : (
             <div className="p-2 space-y-1">
-              {conversations.map((conv) => (
+              {conversations.filter((conv) => searchQuery ? conv.title.toLowerCase().includes(searchQuery.toLowerCase()) : true).map((conv) => (
                 <button
                   key={conv.id}
                   className="w-full text-left rounded-lg px-3 py-2.5 hover:bg-zinc-100 transition-colors"

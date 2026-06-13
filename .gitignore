@@ -43,3 +43,4 @@ npm-debug.log*
 
 # Claude/Codex local settings (may contain API keys)
 .claude/
+.env*

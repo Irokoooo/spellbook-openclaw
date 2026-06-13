@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from supabase import Client
+from croniter import croniter
+import datetime
 
 from openclaw_wrapper import run_skill
 
@@ -28,11 +30,50 @@ class TaskRunner:
         await asyncio.gather(
             self._heartbeat_loop(),
             self._task_loop(),
+            self._scheduler_loop(),
         )
 
     async def stop(self):
         self._running = False
         await self._set_status("offline")
+
+
+    # ------------------------------------------------------------------ #
+    # Scheduler
+    # ------------------------------------------------------------------ #
+
+    async def _scheduler_loop(self):
+        interval = 60
+        while self._running:
+            try:
+                await self._process_schedules()
+            except Exception as exc:
+                logger.warning('Scheduler error: ' + str(exc))
+            await asyncio.sleep(interval)
+
+    async def _process_schedules(self):
+        response = self.supabase.table('schedules').select('*').eq('enabled', True).execute()
+        schedules = response.data or []
+        now = datetime.datetime.now()
+        for sched in schedules:
+            try:
+                cron = croniter(sched['cron_expression'], now)
+                last_run = sched.get('last_run_at')
+                if last_run:
+                    last_run_dt = datetime.datetime.fromisoformat(last_run.replace('Z', '+00:00')).replace(tzinfo=None)
+                    if last_run_dt > now - datetime.timedelta(seconds=120):
+                        continue
+                self.supabase.table('tasks').insert({
+                    'agent_id': self.agent_id,
+                    'skill_id': sched.get('skill_id'),
+                    'skill_name': sched.get('skill_name', ''),
+                    'input': sched.get('input_template', {}),
+                    'status': 'queued',
+                }).execute()
+                self.supabase.table('schedules').update({'last_run_at': now.isoformat()}).eq('id', sched['id']).execute()
+                logger.info('Scheduler fired: ' + str(sched.get('name')))
+            except Exception as exc:
+                logger.warning('Schedule failed: ' + str(exc))
 
     # ------------------------------------------------------------------ #
     # Heartbeat

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -107,6 +107,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const collectedFieldsRef = useRef<Record<string, string>>({})
   const abortRef = useRef<AbortController | null>(null)
   const pendingPlanOriginalMsgRef = useRef<string>('')
+  const lastOutputPathRef = useRef<string>('')
 
   const newConversation = useCallback(() => {
     abortRef.current?.abort()
@@ -119,6 +120,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     activeConversationIdRef.current = null
     collectedFieldsRef.current = {}
     pendingPlanOriginalMsgRef.current = ''
+    lastOutputPathRef.current = ''
   }, [])
 
   const stopGeneration = useCallback(() => {
@@ -231,6 +233,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       toast.error('未找到 Agent，请先在设置中注册')
       return null
     }
+    // Include default output directory from settings if available
+    if (typeof window !== 'undefined') {
+      const defaultDir = localStorage.getItem('spellbook_default_output_dir')
+      if (defaultDir && !input.output_path) {
+        input = { ...input, output_path: defaultDir + '/' + skillName + '_' + Date.now() + '.md' }
+      }
+    }
     const { data: task, error } = await supabase
       .from('tasks')
       .insert({ agent_id: agentId, skill_id: skillId || null, skill_name: skillName, input, status: 'queued' })
@@ -293,6 +302,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
     const originalMessage = pendingPlanOriginalMsgRef.current || undefined
     pendingPlanOriginalMsgRef.current = ''
+    lastOutputPathRef.current = ''
 
     try {
       const res = await fetch('/api/chat', {
@@ -303,6 +313,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           collectedFields: collectedFieldsRef.current,
           thinkingMode,
+          lastOutputPath: lastOutputPathRef.current || undefined,
+          defaultOutputDir: (typeof window !== "undefined" ? localStorage.getItem("spellbook_default_output_dir") : null) || undefined,
           ...(originalMessage ? { originalMessage } : {}),
         }),
         signal: controller.signal,
@@ -364,6 +376,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               }
               setSessionId(event.sessionId)
               accumulateUsage(event.tokenUsage)
+              if (event.outputPath) lastOutputPathRef.current = event.outputPath
               setMessages((prev) => prev.map((m) => m.id === assistantId ? finalMsg : m))
               await updateConversationSession(activeConversationIdRef.current, event.sessionId)
               await saveMessageToHistory(activeConversationIdRef.current, finalMsg)
@@ -392,6 +405,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               setMessages((prev) => prev.map((m) => m.id === assistantId ? draftMsg : m))
               await updateConversationSession(activeConversationIdRef.current, event.sessionId)
               await saveMessageToHistory(activeConversationIdRef.current, draftMsg)
+            } else if (event.type === "save_file") {
+              // Trigger file download in browser
+              const blob = new Blob([event.content], { type: "text/markdown;charset=utf-8" })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement("a")
+              a.href = url
+              a.download = event.path || "output.md"
+              a.click()
+              URL.revokeObjectURL(url)
+              toast.success("文件已下载: " + (event.path || "output.md"))
+              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: event.reply } : m))
+              await updateConversationSession(activeConversationIdRef.current, event.sessionId)
+              await saveMessageToHistory(activeConversationIdRef.current, { id: assistantId, type: "assistant" as const, loading: false, content: event.reply, timestamp: new Date().toISOString() })
             } else if (event.type === 'error') {
               toast.error(event.error || 'AI 出错了，请重试')
               setMessages((prev) => prev.filter((m) => m.id !== assistantId))
@@ -453,3 +479,4 @@ export function useChatContext() {
   if (!ctx) throw new Error('useChatContext must be used within ChatProvider')
   return ctx
 }
+

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { SkillFormField } from '@/types'
+import { gsap } from 'gsap'
+import { fireSkillConfetti } from '@/lib/confetti'
 
 interface Message {
   role: 'assistant' | 'user'
@@ -156,6 +158,7 @@ export default function SkillWorkshopPage() {
         toast.error(data.error || '保存失败')
       } else {
         toast.success(`Skill「${parsedSkill.name}」已保存，可在对话页使用了！`)
+        fireSkillConfetti()
         setParsedSkill(null)
         setMessages([])
       }
@@ -199,7 +202,7 @@ export default function SkillWorkshopPage() {
         {/* Messages */}
         <ScrollArea className="flex-1 px-6 py-4" ref={scrollRef as any}>
           {isFirstMessage && !loading ? (
-            <WelcomeScreen onSelect={sendMessage} />
+            <WelcomeScreen onSelect={sendMessage} onImport={(skill) => { setParsedSkill(skill); setMessages([{ role: "assistant", content: `✅ 已导入 Skill：**${skill.name}**\n\n请在右侧预览确认，如需调整可继续对话，满意后点击「保存 Skill」。` }]) }} />
           ) : (
             <div className="space-y-5 max-w-2xl mx-auto">
               {messages.map((msg, i) => (
@@ -260,12 +263,72 @@ export default function SkillWorkshopPage() {
 
 // ---- Sub-components ----
 
-function WelcomeScreen({ onSelect }: { onSelect: (msg: string) => void }) {
+function WelcomeScreen({ onSelect, onImport }: { onSelect: (msg: string) => void; onImport: (skill: ParsedSkill) => void }) {
+
+function parseSkillFile(text: string, filename: string): ParsedSkill | null {
+  try {
+    // Try JSON first
+    if (filename.endsWith(".json")) {
+      const json = JSON.parse(text)
+      return {
+        name: json.name || json.title || "Imported Skill",
+        description: json.description || "",
+        form_fields: json.form_fields || json.inputs || [],
+        prompt: json.prompt || json.system_prompt || json.systemPrompt || "",
+      }
+    }
+
+    // Parse SKILL.md format
+    const lines = text.split("\\n").map((l) => l.trim())
+    let name = ""
+    let description = ""
+    let promptStart = -1
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]
+      if (l.startsWith("# ") && !name) name = l.slice(2).trim()
+      if (l.startsWith("## ") && l.includes("escription") && i + 1 < lines.length) {
+        description = lines[i + 1]
+      }
+      if ((l.startsWith("## ") && l.includes("rompt")) || (l.includes("Prompt") && l.includes("##"))) {
+        promptStart = i + 1
+      }
+      if (l === "---" && promptStart < 0) promptStart = i + 1
+    }
+
+    const prompt = promptStart > 0 ? lines.slice(promptStart).join("\\n").trim() : text
+
+    if (!name) name = filename.replace(/\\.md$/i, "").replace(/[-_]/g, " ")
+
+    return {
+      name: name,
+      description: description || "从 " + filename + " 导入的 Skill",
+      form_fields: [],
+      prompt: prompt,
+    }
+  } catch {
+    return null
+  }
+}
   const [custom, setCustom] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const mm = gsap.matchMedia()
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.from(el.querySelectorAll('.ws-item'), {
+        opacity: 0, y: 12, duration: 0.24, ease: 'power2.out',
+        stagger: 0.05, clearProps: 'transform,opacity',
+      })
+    })
+    return () => mm.revert()
+  }, [])
 
   return (
-    <div className="max-w-xl mx-auto pt-8 space-y-8">
-      <div className="flex items-center justify-center gap-1 flex-wrap">
+    <div ref={containerRef} className="max-w-xl mx-auto pt-8 space-y-8">
+      <div className="ws-item flex items-center justify-center gap-1 flex-wrap">
         {GUIDE_STEPS.map((step, i) => (
           <div key={i} className="flex items-center gap-1">
             <span className="flex items-center gap-1.5 text-sm text-zinc-500">
@@ -279,7 +342,7 @@ function WelcomeScreen({ onSelect }: { onSelect: (msg: string) => void }) {
         ))}
       </div>
 
-      <div className="text-center">
+      <div className="ws-item text-center">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-violet-100 mb-4">
           <Wand2 className="h-6 w-6 text-violet-600" />
         </div>
@@ -287,7 +350,7 @@ function WelcomeScreen({ onSelect }: { onSelect: (msg: string) => void }) {
         <p className="text-zinc-500 text-sm">用自然语言描述你的需求，AI 会帮你生成完整配置</p>
       </div>
 
-      <div className="space-y-2">
+      <div className="ws-item space-y-2">
         <p className="text-xs text-zinc-400 font-medium uppercase tracking-wide">快速开始</p>
         <div className="grid grid-cols-1 gap-2">
           {STARTER_PROMPTS.map((prompt) => (
@@ -305,7 +368,7 @@ function WelcomeScreen({ onSelect }: { onSelect: (msg: string) => void }) {
 
       <Separator />
 
-      <div className="space-y-2">
+      <div className="ws-item space-y-2">
         <p className="text-xs text-zinc-400 font-medium uppercase tracking-wide">或者自定义描述</p>
         <div className="flex gap-2">
           <Textarea
@@ -327,6 +390,130 @@ function WelcomeScreen({ onSelect }: { onSelect: (msg: string) => void }) {
             className="self-end"
           >
             <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="ws-item space-y-3">
+        <p className="text-xs text-zinc-400 font-medium uppercase tracking-wide">导入已有 Skill</p>
+
+        {/* Drag & Drop Zone */}
+        <div
+          className="border-2 border-dashed border-zinc-200 rounded-xl p-6 text-center hover:border-violet-300 hover:bg-violet-50/30 transition-colors cursor-pointer"
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.className = "border-2 border-dashed border-violet-400 rounded-xl p-6 text-center bg-violet-50/50 transition-colors cursor-pointer" }}
+          onDragLeave={(e) => { e.currentTarget.className = "border-2 border-dashed border-zinc-200 rounded-xl p-6 text-center hover:border-violet-300 hover:bg-violet-50/30 transition-colors cursor-pointer" }}
+          onDrop={async (e) => {
+            e.preventDefault()
+            const file = e.dataTransfer.files[0]
+            if (!file) return
+            if (!file.name.endsWith(".md") && !file.name.endsWith(".json")) {
+              toast.error("请拖入 SKILL.md 或 .json 文件")
+              return
+            }
+            const text = await file.text()
+            try {
+              const skill = parseSkillFile(text, file.name)
+              if (skill) {
+                onImport(skill)
+                toast.success("Skill 已导入！")
+              }
+            } catch (err) {
+              toast.error("解析失败：" + String(err))
+            }
+          }}
+          onClick={() => document.getElementById("skill-file-input")?.click()}
+        >
+          <div className="text-2xl mb-2">📂</div>
+          <p className="text-sm text-zinc-500">拖拽 SKILL.md 或 .json 文件到此处</p>
+          <p className="text-xs text-zinc-400 mt-1">或者点击选择文件</p>
+        </div>
+        <input
+          id="skill-file-input"
+          type="file"
+          accept=".md,.json"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            if (!file) return
+            const text = await file.text()
+            try {
+              const skill = parseSkillFile(text, file.name)
+              if (skill) {
+                onImport(skill)
+                toast.success("Skill 已导入！")
+              }
+            } catch (err) {
+              toast.error("解析失败：" + String(err))
+            }
+            e.target.value = ""
+          }}
+        />
+
+        {/* GitHub URL */}
+        <div className="flex gap-2">
+          <input
+            id="github-skill-url"
+            type="text"
+            placeholder="GitHub 仓库 URL（如 https://github.com/user/repo）"
+            className="flex-1 h-9 rounded-lg border border-zinc-200 px-3 text-sm outline-hidden focus:border-violet-400"
+            onKeyDown={async (e) => {
+              if (e.key === "Enter") {
+                const url = (e.target as HTMLInputElement).value.trim()
+                if (!url) return
+                try {
+                  toast.loading("正在从 GitHub 获取...")
+                  const res = await fetch("/api/skill-import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url }),
+                  })
+                  const data = await res.json()
+                  if (data.skill) {
+                    onImport(data.skill)
+                    toast.dismiss()
+                    toast.success("Skill 已从 GitHub 导入，点击右侧「导入此 Skill」按钮")
+                  } else {
+                    toast.dismiss()
+                    toast.error(data.error || "导入失败")
+                  }
+                } catch (err) {
+                  toast.dismiss()
+                  toast.error("网络错误：" + String(err))
+                }
+              }
+            }}
+          />
+          <Button size="sm" variant="outline" className="shrink-0"
+            onClick={async () => {
+              const input = document.getElementById("github-skill-url") as HTMLInputElement
+              if (!input) return
+              const url = input.value.trim()
+              if (!url) return
+              try {
+                toast.loading("正在从 GitHub 获取...")
+                const res = await fetch("/api/skill-import", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ url }),
+                })
+                const data = await res.json()
+                if (data.skill) {
+                  onImport(data.skill)
+                  toast.dismiss()
+                  toast.success("Skill 已从 GitHub 导入，点击右侧「导入此 Skill」按钮")
+                } else {
+                  toast.dismiss()
+                  toast.error(data.error || "导入失败")
+                }
+              } catch (err) {
+                toast.dismiss()
+                toast.error("网络错误：" + String(err))
+              }
+            }}
+          >
+            导入
           </Button>
         </div>
       </div>
@@ -498,3 +685,5 @@ function SkillPreviewPanel({
     </div>
   )
 }
+
+

@@ -6,7 +6,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
       attribute="data-theme"
-      defaultTheme="default"
+      defaultTheme="studio"
       themes={['default', 'grimoire', 'studio']}
       disableTransitionOnChange={false}
     >

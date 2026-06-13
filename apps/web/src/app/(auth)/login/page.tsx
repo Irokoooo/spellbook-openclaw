@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { gsap } from 'gsap'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -16,6 +17,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const mm = gsap.matchMedia()
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.from(el, { opacity: 0, y: 20, duration: 0.35, ease: 'power3.out', clearProps: 'transform,opacity' })
+    })
+    return () => mm.revert()
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -34,7 +46,7 @@ export default function LoginPage() {
   }
 
   return (
-    <Card>
+    <Card ref={cardRef}>
       <CardHeader>
         <CardTitle>登录</CardTitle>
       </CardHeader>
